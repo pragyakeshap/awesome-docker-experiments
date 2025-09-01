@@ -1,0 +1,44 @@
+version: '3.8'
+
+services:
+  langchain-gpu:
+    build: 
+      context: .
+      dockerfile: Dockerfile
+    container_name: langchain-gpu-app
+    environment:
+      - CUDA_VISIBLE_DEVICES=0
+      - HUGGINGFACE_HUB_CACHE=/app/models
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./models:/app/models
+      - ./data:/app/data
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    restart: unless-stopped
+
+  # Optional: Add a monitoring service
+  nvidia-smi:
+    image: nvidia/cuda:12.1-base-ubuntu20.04
+    container_name: gpu-monitor
+    command: watch -n 1 nvidia-smi
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    profiles: ["monitoring"]

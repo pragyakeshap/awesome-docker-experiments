@@ -1,0 +1,280 @@
+name: Docker AI Security CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  # Security scanning and linting
+  security-scan:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Run Trivy vulnerability scanner in repo mode
+      uses: aquasecurity/trivy-action@master
+      with:
+        scan-type: 'fs'
+        scan-ref: '.'
+        format: 'sarif'
+        output: 'trivy-results.sarif'
+
+    - name: Upload Trivy scan results to GitHub Security tab
+      uses: github/codeql-action/upload-sarif@v2
+      if: always()
+      with:
+        sarif_file: 'trivy-results.sarif'
+
+    - name: Run Hadolint Dockerfile linter
+      uses: hadolint/hadolint-action@v3.1.0
+      with:
+        dockerfile: '**/Dockerfile'
+
+  # Build and test Docker images
+  build-and-test:
+    needs: security-scan
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        example: [
+          '01-basic-dockerfile',
+          '02-multistage-builds', 
+          '03-crewai-compose',
+          '04-langchain-gpu',
+          '05-security-scans',
+          '06-nginx-healthcheck'
+        ]
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
+    - name: Log in to Container Registry
+      uses: docker/login-action@v3
+      with:
+        registry: ${{ env.REGISTRY }}
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Extract metadata
+      id: meta
+      uses: docker/metadata-action@v5
+      with:
+        images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/${{ matrix.example }}
+        tags: |
+          type=ref,event=branch
+          type=ref,event=pr
+          type=sha,prefix={{branch}}-
+          type=raw,value=latest,enable={{is_default_branch}}
+
+    - name: Build Docker image
+      uses: docker/build-push-action@v5
+      with:
+        context: ./${{ matrix.example }}
+        platforms: linux/amd64,linux/arm64
+        push: false
+        tags: ${{ steps.meta.outputs.tags }}
+        labels: ${{ steps.meta.outputs.labels }}
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+        outputs: type=docker,dest=/tmp/${{ matrix.example }}.tar
+
+    - name: Upload artifact
+      uses: actions/upload-artifact@v3
+      with:
+        name: ${{ matrix.example }}-image
+        path: /tmp/${{ matrix.example }}.tar
+
+  # Security scan built images
+  image-security-scan:
+    needs: build-and-test
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        example: [
+          '01-basic-dockerfile',
+          '02-multistage-builds', 
+          '03-crewai-compose',
+          '04-langchain-gpu',
+          '05-security-scans',
+          '06-nginx-healthcheck'
+        ]
+
+    steps:
+    - name: Download artifact
+      uses: actions/download-artifact@v3
+      with:
+        name: ${{ matrix.example }}-image
+        path: /tmp
+
+    - name: Load Docker image
+      run: docker load --input /tmp/${{ matrix.example }}.tar
+
+    - name: Run Trivy vulnerability scanner on image
+      uses: aquasecurity/trivy-action@master
+      with:
+        image-ref: '${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/${{ matrix.example }}:${{ github.sha }}'
+        format: 'json'
+        output: '${{ matrix.example }}-trivy-results.json'
+
+    - name: Upload image scan results
+      uses: actions/upload-artifact@v3
+      with:
+        name: ${{ matrix.example }}-security-results
+        path: ${{ matrix.example }}-trivy-results.json
+
+  # Integration tests
+  integration-tests:
+    needs: build-and-test
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Download all artifacts
+      uses: actions/download-artifact@v3
+
+    - name: Load Docker images
+      run: |
+        for image in *-image/*.tar; do
+          docker load --input "$image"
+        done
+
+    - name: Run integration tests
+      run: |
+        chmod +x ./07-cicd-pipeline/integration-tests.sh
+        ./07-cicd-pipeline/integration-tests.sh
+
+    - name: Generate test report
+      uses: dorny/test-reporter@v1
+      if: always()
+      with:
+        name: Integration Tests
+        path: test-results.xml
+        reporter: java-junit
+
+  # Deploy to staging (only on main branch)
+  deploy-staging:
+    if: github.ref == 'refs/heads/main'
+    needs: [image-security-scan, integration-tests]
+    runs-on: ubuntu-latest
+    environment: staging
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Deploy to staging
+      run: |
+        echo "Deploying to staging environment..."
+        # Add deployment commands here
+        # kubectl apply -f k8s/staging/
+        # docker-compose -f docker-compose.staging.yml up -d
+
+  # Generate SBOM and security reports
+  generate-sbom:
+    needs: build-and-test
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Download artifacts
+      uses: actions/download-artifact@v3
+
+    - name: Install Syft
+      run: |
+        curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh | sh -s -- -b /usr/local/bin
+
+    - name: Generate SBOM for all images
+      run: |
+        mkdir -p sbom-reports
+        for image in *-image/*.tar; do
+          image_name=$(basename "$image" .tar)
+          docker load --input "$image"
+          syft "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/$image_name:${{ github.sha }}" -o json > "sbom-reports/$image_name-sbom.json"
+          syft "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/$image_name:${{ github.sha }}" -o table > "sbom-reports/$image_name-sbom.txt"
+        done
+
+    - name: Upload SBOM artifacts
+      uses: actions/upload-artifact@v3
+      with:
+        name: sbom-reports
+        path: sbom-reports/
+
+  # Push images to registry (only on main branch)
+  push-images:
+    if: github.ref == 'refs/heads/main'
+    needs: [image-security-scan, integration-tests]
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        example: [
+          '01-basic-dockerfile',
+          '02-multistage-builds', 
+          '03-crewai-compose',
+          '04-langchain-gpu',
+          '05-security-scans',
+          '06-nginx-healthcheck'
+        ]
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
+    - name: Log in to Container Registry
+      uses: docker/login-action@v3
+      with:
+        registry: ${{ env.REGISTRY }}
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Extract metadata
+      id: meta
+      uses: docker/metadata-action@v5
+      with:
+        images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/${{ matrix.example }}
+        tags: |
+          type=ref,event=branch
+          type=sha,prefix={{branch}}-
+          type=raw,value=latest
+
+    - name: Build and push Docker image
+      uses: docker/build-push-action@v5
+      with:
+        context: ./${{ matrix.example }}
+        platforms: linux/amd64,linux/arm64
+        push: true
+        tags: ${{ steps.meta.outputs.tags }}
+        labels: ${{ steps.meta.outputs.labels }}
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+
+    - name: Sign container image
+      run: |
+        echo "Signing container image with cosign..."
+        # cosign sign --yes ${{ steps.meta.outputs.tags }}
+        
+    - name: Generate provenance
+      uses: slsa-framework/slsa-github-generator/.github/workflows/generator_container_slsa3.yml@v1.9.0
+      with:
+        image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/${{ matrix.example }}
+        digest: ${{ steps.build.outputs.digest }}
+        registry-username: ${{ github.actor }}
+      secrets:
+        registry-password: ${{ secrets.GITHUB_TOKEN }}

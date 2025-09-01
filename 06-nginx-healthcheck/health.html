@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Health Check - Service Status</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .status-healthy {
+            color: #28a745;
+            font-weight: bold;
+        }
+        .status-item {
+            display: flex;
+            justify-content: space-between;
+            padding: 10px 0;
+            border-bottom: 1px solid #eee;
+        }
+        .timestamp {
+            color: #666;
+            font-size: 0.9em;
+        }
+        .metrics {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 5px;
+            margin-top: 20px;
+        }
+        .metric {
+            display: inline-block;
+            margin-right: 20px;
+            padding: 5px 10px;
+            background: white;
+            border-radius: 3px;
+            border: 1px solid #ddd;
+        }
+        h1 {
+            color: #333;
+            margin-bottom: 30px;
+        }
+        .check-mark {
+            color: #28a745;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🏥 Service Health Status</h1>
+        
+        <div class="status-item">
+            <span>Overall Status</span>
+            <span class="status-healthy check-mark">✓ HEALTHY</span>
+        </div>
+        
+        <div class="status-item">
+            <span>Service</span>
+            <span>Nginx Web Server</span>
+        </div>
+        
+        <div class="status-item">
+            <span>Version</span>
+            <span>Alpine Linux</span>
+        </div>
+        
+        <div class="status-item">
+            <span>Uptime</span>
+            <span id="uptime">Loading...</span>
+        </div>
+        
+        <div class="status-item">
+            <span>Last Check</span>
+            <span class="timestamp" id="timestamp">Loading...</span>
+        </div>
+        
+        <div class="metrics">
+            <h3>Health Check Endpoints</h3>
+            <div class="metric">
+                <strong>/health</strong> - Simple health check
+            </div>
+            <div class="metric">
+                <strong>/ready</strong> - Readiness probe
+            </div>
+            <div class="metric">
+                <strong>/live</strong> - Liveness probe
+            </div>
+            <div class="metric">
+                <strong>/status</strong> - JSON status
+            </div>
+            <div class="metric">
+                <strong>/metrics</strong> - Basic metrics
+            </div>
+        </div>
+        
+        <div class="metrics">
+            <h3>Features</h3>
+            <ul>
+                <li>✓ Load balancer friendly health checks</li>
+                <li>✓ Kubernetes probe endpoints</li>
+                <li>✓ Custom health check script</li>
+                <li>✓ Security headers enabled</li>
+                <li>✓ Non-root container</li>
+                <li>✓ Resource monitoring</li>
+            </ul>
+        </div>
+    </div>
+
+    <script>
+        // Update timestamp
+        document.getElementById('timestamp').textContent = new Date().toLocaleString();
+        
+        // Simple uptime calculation (demo)
+        let startTime = Date.now();
+        function updateUptime() {
+            let uptime = Math.floor((Date.now() - startTime) / 1000);
+            let hours = Math.floor(uptime / 3600);
+            let minutes = Math.floor((uptime % 3600) / 60);
+            let seconds = uptime % 60;
+            document.getElementById('uptime').textContent = 
+                `${hours}h ${minutes}m ${seconds}s`;
+        }
+        
+        setInterval(updateUptime, 1000);
+        updateUptime();
+    </script>
+</body>
+</html>
