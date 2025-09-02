@@ -51,7 +51,7 @@ awesome-docker-experiments/
 ### Clone and Explore
 
 ```bash
-git clone https://github.com/akhileshkeshap/awesome-docker-experiments.git
+git clone https://github.com/pragyakeshap/awesome-docker-experiments.git
 cd awesome-docker-experiments
 ```
 
@@ -431,12 +431,6 @@ prometheus:
 
 ---
 
-## 📝 License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
----
-
 ## 🙏 Acknowledgments
 
 - [CrewAI](https://github.com/joaomdmoura/crewAI) - Multi-agent AI framework
@@ -449,9 +443,9 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## 📞 Support
 
-- 🐛 **Issues**: [GitHub Issues](https://github.com/akhileshkeshap/awesome-docker-experiments/issues)
-- 💬 **Discussions**: [GitHub Discussions](https://github.com/akhileshkeshap/awesome-docker-experiments/discussions)
-- 📧 **Email**: your-email@example.com
+- 🐛 **Issues**: [GitHub Issues](https://github.com/pragyakeshap/awesome-docker-experiments/issues)
+- 💬 **Discussions**: [GitHub Discussions](https://github.com/pragyakeshap/awesome-docker-experiments/discussions)
+- 📧 **Email**: pragya.rawal@gmail.com , pragyakeshap@gmail.com
 
 ---
 
